@@ -240,7 +240,7 @@ export default function AdminLogin() {
                                 <Input
                                     value={username}
                                     onChange={(e) => setUsername(e.target.value)}
-                                    placeholder="Nome de utilizador"
+                                    placeholder="utilizador ou Email"
                                     className="pl-12 h-14 bg-slate-50 border-slate-100 rounded-2xl focus:ring-primary/20"
                                     required
                                 />
