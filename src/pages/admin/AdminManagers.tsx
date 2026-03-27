@@ -9,12 +9,18 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
 import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogDescription,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 
 interface Manager {
@@ -59,16 +65,50 @@ export default function AdminManagers() {
 
   const handlePromote = async (userId: string) => {
     try {
-      // 1. Fetch user_id (Auth UUID) from profiles
-      const { data: profile } = await supabase
+      // 1. Fetch user profile with referral info
+      const { data: profile } = await (supabase as any)
         .from('profiles')
-        .select('user_id')
+        .select('user_id, referred_by, nome')
         .eq('id', userId)
         .single();
-        
+
       if (!profile || !profile.user_id) throw new Error("ID de utilizador não encontrado no perfil.");
 
-      // 2. Atualizar perfil para gestor
+      // 2. Handle Referral Bonus Reversal if applicable
+      if (profile.referred_by) {
+        const { data: referrer } = await (supabase as any)
+          .from('profiles')
+          .select('user_id, wallet_balance, score')
+          .eq('id', profile.referred_by)
+          .single();
+
+        if (referrer) {
+          // Subtract 200 from balance and score
+          const newBalance = (referrer.wallet_balance || 0) - 200;
+          const newScore = (referrer.score || 0) - 200;
+
+          await (supabase as any)
+            .from('profiles')
+            .update({
+              wallet_balance: newBalance,
+              score: newScore
+            })
+            .eq('id', profile.referred_by);
+
+          // Log the reversal transaction
+          await (supabase as any)
+            .from('transactions')
+            .insert({
+              user_id: referrer.user_id,
+              amount: -200,
+              type: 'BONUS',
+              status: 'COMPLETED',
+              description: `Estorno de Bónus: ${profile.nome || 'Utilizador'} promovido a Gestor.`
+            });
+        }
+      }
+
+      // 3. Atualizar perfil para gestor
       const { error: profileError } = await (supabase as any)
         .from('profiles')
         .update({ role: 'manager' })
@@ -76,18 +116,54 @@ export default function AdminManagers() {
 
       if (profileError) throw profileError;
 
-      // 3. Associar explicitamente o gestor na tabela user_roles
-      // (ignora erro se já existir por causa de conflito)
-      await supabase
+      // 4. Associar explicitamente o gestor na tabela user_roles
+      await (supabase as any)
         .from('user_roles')
         .upsert({ user_id: profile.user_id, role: 'manager' }, { onConflict: 'user_id' });
 
-      toast.success("Usuário promovido a gestor!");
+      toast.success("Usuário promovido a gestor e bónus revertidos!");
       setIsAddManagerOpen(false);
       fetchManagers();
     } catch (error) {
       console.error(error);
-      toast.error("Erro ao promover usuário. Verifica se os dados estão consistentes.");
+      toast.error("Erro ao promover usuário.");
+    }
+  };
+
+  const handleDemote = async (userId: string) => {
+    try {
+      if (!window.confirm("Atenção: Tem a certeza que deseja remover os privilégios de gestor deste utilizador?")) return;
+      setIsLoading(true);
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('user_id')
+        .eq('id', userId)
+        .single();
+
+      if (!profile || !profile.user_id) throw new Error("ID de utilizador não encontrado.");
+
+      // 1. Atualizar perfil para user normal
+      const { error: profileError } = await (supabase as any)
+        .from('profiles')
+        .update({ role: 'user' })
+        .eq('id', userId);
+
+      if (profileError) throw profileError;
+
+      // 2. Remover permanentemente da tabela user_roles
+      await supabase
+        .from('user_roles')
+        .delete()
+        .eq('user_id', profile.user_id)
+        .eq('role', 'manager');
+
+      toast.success("Gestor despromovido a cliente com sucesso.");
+      fetchManagers();
+    } catch (error) {
+      console.error(error);
+      toast.error("Erro ao remover privilégios de gestor.");
+      setIsLoading(false);
     }
   };
 
@@ -131,14 +207,16 @@ export default function AdminManagers() {
         const { count: clientCount } = await (supabase as any)
           .from('profiles')
           .select('*', { count: 'exact', head: true })
-          .eq('referred_by', m.id);
+          .eq('referred_by', m.id)
+          .eq('role', 'user');
 
         // Count loans for those clients
         // First get client user_ids
         const { data: clients } = await (supabase as any)
           .from('profiles')
           .select('user_id')
-          .eq('referred_by', m.id);
+          .eq('referred_by', m.id)
+          .eq('role', 'user');
 
         const clientUserIds = (clients || []).map((c: any) => c.user_id);
 
@@ -181,53 +259,53 @@ export default function AdminManagers() {
           </div>
           <div className="flex gap-2">
             <Button variant="outline" className="rounded-xl font-bold gap-2" onClick={() => setIsAddManagerOpen(true)}>
-                <Users className="w-4 h-4 text-primary" />
-                Promover Usuário
+              <Users className="w-4 h-4 text-primary" />
+              Promover Usuário
             </Button>
           </div>
         </div>
 
         {/* Add Manager Dialog */}
         <Dialog open={isAddManagerOpen} onOpenChange={setIsAddManagerOpen}>
-            <DialogContent className="max-w-md bg-white rounded-[2rem] p-8 border-none shadow-2xl">
-                <DialogHeader>
-                    <DialogTitle className="font-display text-2xl font-bold">Promover a Gestor</DialogTitle>
-                    <DialogDescription>
-                        Pesquise um utilizador existente para lhe atribuir funções de gestor.
-                    </DialogDescription>
-                </DialogHeader>
+          <DialogContent className="max-w-md bg-white rounded-[2rem] p-8 border-none shadow-2xl">
+            <DialogHeader>
+              <DialogTitle className="font-display text-2xl font-bold">Promover a Gestor</DialogTitle>
+              <DialogDescription>
+                Pesquise um utilizador existente para lhe atribuir funções de gestor.
+              </DialogDescription>
+            </DialogHeader>
 
-                <div className="space-y-4 py-4">
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                        <Input 
-                            placeholder="Email ou nome do utilizador..." 
-                            className="pl-10 h-12 bg-slate-50 border-slate-100 rounded-xl"
-                            value={searchUser}
-                            onChange={(e) => {
-                                setSearchUser(e.target.value);
-                                if (e.target.value.length > 2) handleSearchUsers(e.target.value);
-                            }}
-                        />
-                    </div>
+            <div className="space-y-4 py-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Input
+                  placeholder="Email ou nome do utilizador..."
+                  className="pl-10 h-12 bg-slate-50 border-slate-100 rounded-xl"
+                  value={searchUser}
+                  onChange={(e) => {
+                    setSearchUser(e.target.value);
+                    if (e.target.value.length > 2) handleSearchUsers(e.target.value);
+                  }}
+                />
+              </div>
 
-                    <div className="max-h-[300px] overflow-y-auto space-y-2">
-                        {isSearching ? (
-                            <div className="py-10 flex justify-center"><Loader2 className="animate-spin text-primary" /></div>
-                        ) : usersFound.map(u => (
-                            <div key={u.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors">
-                                <div>
-                                    <p className="text-sm font-bold text-slate-700">{u.nome || "Sem nome"}</p>
-                                    <p className="text-[10px] text-slate-400 font-medium uppercase tracking-widest">{u.email}</p>
-                                </div>
-                                <Button size="sm" variant="ghost" className="text-primary font-bold" onClick={() => handlePromote(u.id)}>
-                                    Selecionar
-                                </Button>
-                            </div>
-                        ))}
+              <div className="max-h-[300px] overflow-y-auto space-y-2">
+                {isSearching ? (
+                  <div className="py-10 flex justify-center"><Loader2 className="animate-spin text-primary" /></div>
+                ) : usersFound.map(u => (
+                  <div key={u.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors">
+                    <div>
+                      <p className="text-sm font-bold text-slate-700">{u.nome || "Sem nome"}</p>
+                      <p className="text-[10px] text-slate-400 font-medium uppercase tracking-widest">{u.email}</p>
                     </div>
-                </div>
-            </DialogContent>
+                    <Button size="sm" variant="ghost" className="text-primary font-bold" onClick={() => handlePromote(u.id)}>
+                      Selecionar
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </DialogContent>
         </Dialog>
 
         {isLoading ? (
@@ -255,9 +333,21 @@ export default function AdminManagers() {
                       <p className="text-xs text-muted-foreground">{manager.email}</p>
                     </div>
                   </div>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                    <MoreVertical className="w-4 h-4" />
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <MoreVertical className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48 bg-white rounded-xl shadow-elevated border-slate-100">
+                      <DropdownMenuItem
+                        className="text-destructive font-bold text-xs cursor-pointer focus:bg-destructive/10 focus:text-destructive"
+                        onClick={() => handleDemote(manager.id)}
+                      >
+                        Despromover a Cliente
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
                 <div className="grid grid-cols-2 gap-3 mb-4">
                   <div className="bg-secondary/50 rounded-lg p-3 text-center">
@@ -269,36 +359,36 @@ export default function AdminManagers() {
                     <p className="text-xs text-muted-foreground">Empréstimos</p>
                   </div>
                 </div>
-                
+
                 <div className="mb-4 p-3 bg-primary/5 rounded-xl border border-primary/10 flex justify-between items-center">
                   <span className="text-[10px] font-bold text-primary uppercase">Plafond Total</span>
                   <span className="font-display font-bold text-slate-700">
                     {new Intl.NumberFormat('pt-AO', { style: 'currency', currency: 'AOA' }).format(manager.manager_plafond || 0)}
                   </span>
                 </div>
-                <Button 
-                    variant="outline" 
-                    className="w-full rounded-xl bg-slate-50 border-slate-100 font-bold gap-2 text-slate-600 hover:bg-slate-100 transition-colors"
-                    onClick={() => {
-                        setSelectedManager(manager);
-                        setIsPermissionsOpen(true);
-                    }}
+                <Button
+                  variant="outline"
+                  className="w-full rounded-xl bg-slate-50 border-slate-100 font-bold gap-2 text-slate-600 hover:bg-slate-100 transition-colors"
+                  onClick={() => {
+                    setSelectedManager(manager);
+                    setIsPermissionsOpen(true);
+                  }}
                 >
-                    <ShieldCheck className="w-4 h-4 text-primary" />
-                    Gerir Acessos
+                  <ShieldCheck className="w-4 h-4 text-primary" />
+                  Gerir Acessos
                 </Button>
               </motion.div>
             ))}
 
             {selectedManager && (
-                <ManagerPermissionsModal 
-                    isOpen={isPermissionsOpen}
-                    onClose={() => setIsPermissionsOpen(false)}
-                    onSuccess={fetchManagers}
-                    userId={selectedManager.id}
-                    userName={selectedManager.nome}
-                    authUserId={selectedManager.user_id}
-                />
+              <ManagerPermissionsModal
+                isOpen={isPermissionsOpen}
+                onClose={() => setIsPermissionsOpen(false)}
+                onSuccess={fetchManagers}
+                userId={selectedManager.id}
+                userName={selectedManager.nome}
+                authUserId={selectedManager.user_id}
+              />
             )}
 
             {managers.length === 0 && (

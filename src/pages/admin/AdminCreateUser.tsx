@@ -180,7 +180,7 @@ export default function AdminCreateUser() {
                                     value={formData.nome}
                                     onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
                                     className="h-14 border-slate-100 rounded-2xl bg-slate-50 focus:ring-primary/20"
-                                    placeholder="Nome do utilizador"
+                                    placeholder="Nome do utilizador ou email"
                                 />
                             </div>
 

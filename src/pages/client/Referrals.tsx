@@ -67,7 +67,8 @@ export default function Referrals() {
       const { count, error: countError } = await (supabase as any)
         .from('profiles')
         .select('*', { count: 'exact', head: true })
-        .eq('referred_by', user.id);
+        .eq('referred_by', user.id)
+        .eq('role', 'user');
 
       if (countError) {
         console.error("Erro ao contar indicações:", countError);
@@ -138,6 +139,7 @@ export default function Referrals() {
         .from('profiles')
         .select('id, nome, status, created_at')
         .eq('referred_by', user.id)
+        .eq('role', 'user')
         .order('created_at', { ascending: false });
 
       setReferrals(data || []);

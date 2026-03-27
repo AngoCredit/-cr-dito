@@ -67,7 +67,7 @@ export default function AdminUsers() {
       const { data, error } = await (supabase as any)
         .from('profiles')
         .select('*')
-        .neq('role', 'admin')
+        .eq('role', 'user')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
