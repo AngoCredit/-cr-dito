@@ -23,7 +23,7 @@ export default function AdminCreateUser() {
         nome: "",
         email: "",
         password: "",
-        role: "client" as "admin" | "manager" | "client",
+        role: "user" as "admin" | "manager" | "user",
     });
     const [isLoading, setIsLoading] = useState(false);
 
@@ -117,7 +117,7 @@ export default function AdminCreateUser() {
 
                 // 4. Inserir mapeamento explícito na tabela user_roles
                 // Este passo é importante para as RLS de gestão
-                if (formData.role !== 'client') {
+                if (formData.role !== 'user') {
                     await supabase
                         .from('user_roles')
                         .insert({
@@ -180,7 +180,7 @@ export default function AdminCreateUser() {
                                     value={formData.nome}
                                     onChange={(e) => setFormData({ ...formData, nome: e.target.value })}
                                     className="h-14 border-slate-100 rounded-2xl bg-slate-50 focus:ring-primary/20"
-                                    placeholder="Nome do utilizador ou email"
+                                    placeholder="Nome do utilizador"
                                 />
                             </div>
 
@@ -225,7 +225,7 @@ export default function AdminCreateUser() {
                                         <SelectValue placeholder="Selecione o nível de acesso" />
                                     </SelectTrigger>
                                     <SelectContent className="rounded-2xl border-slate-100">
-                                        <SelectItem value="client" className="py-3 focus:bg-primary/5 cursor-pointer">Cliente (App Móvel)</SelectItem>
+                                        <SelectItem value="user" className="py-3 focus:bg-primary/5 cursor-pointer">Cliente (App Móvel)</SelectItem>
                                         <SelectItem value="manager" className="py-3 focus:bg-primary/5 cursor-pointer">Gestor (Acesso Restrito)</SelectItem>
                                         <SelectItem value="admin" className="py-3 focus:bg-primary/5 cursor-pointer">Administrador (Acesso Total)</SelectItem>
                                     </SelectContent>
@@ -233,7 +233,7 @@ export default function AdminCreateUser() {
                             </div>
                         </div>
 
-                        {formData.role === 'client' && (
+                        {formData.role === 'user' && (
                             <div className="bg-blue-50/50 p-4 rounded-2xl border border-blue-100 flex items-start gap-3">
                                 <ShieldCheck className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />
                                 <p className="text-xs text-blue-700 leading-relaxed">
