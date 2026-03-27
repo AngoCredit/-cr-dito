@@ -60,7 +60,7 @@ export default function AdminDashboard() {
       const { count: usersCount } = await (supabase as any)
         .from('profiles')
         .select('*', { count: 'exact', head: true })
-        .neq('role', 'admin');
+        .eq('role', 'user');
 
       // Fetch loans summary
       // Note: If 'loans' table doesn't exist yet, this might catch an error
